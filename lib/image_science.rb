@@ -121,6 +121,15 @@ class ImageScience
     END
 
     builder.prefix <<-"END"
+      VALUE wrap(FIBITMAP *image, VALUE self, FREE_IMAGE_FORMAT fif) {
+        unsigned int self_is_class = rb_type(self) == T_CLASS;
+        VALUE klass = self_is_class ? self         : CLASS_OF(self);
+        VALUE type  = self_is_class ? INT2FIX(fif) : rb_iv_get(self, "@file_type");
+        VALUE obj = Data_Wrap_Struct(klass, NULL, NULL, image);
+        rb_iv_set(obj, "@file_type", type);
+        return obj;
+      }
+
       VALUE wrap_and_yield(FIBITMAP *image, VALUE self, FREE_IMAGE_FORMAT fif) {
         unsigned int self_is_class = rb_type(self) == T_CLASS;
         VALUE klass = self_is_class ? self         : CLASS_OF(self);
@@ -289,6 +298,95 @@ class ImageScience
           return result ? Qtrue : Qfalse;
         }
         rb_raise(rb_eTypeError, "Unknown file format");
+      }
+    END
+
+     builder.c <<-"END"
+      VALUE convert_to_8_bits()) {
+        FIBITMAP *bitmap;
+        FIBITMAP *copy;
+        VALUE result = Qnil;
+        GET_BITMAP(bitmap);
+
+        if (copy = FreeImage_ConvertTo8Bits(bitmap)) {
+          copy_icc_profile(self, bitmap, copy);
+          result = wrap(copy, self, 0);
+        }
+        return result;
+      }
+    END
+
+    builder.c <<-"END"
+      VALUE convert_to_24_bits()) {
+        FIBITMAP *bitmap;
+        FIBITMAP *copy;
+        VALUE result = Qnil;
+        GET_BITMAP(bitmap);
+
+        if (copy = FreeImage_ConvertTo24Bits(bitmap)) {
+          copy_icc_profile(self, bitmap, copy);
+          result = wrap(copy, self, 0);
+        }
+        return result;
+      }
+    END
+
+    builder.c <<-"END"
+      VALUE convert_to_32_bits()) {
+        FIBITMAP *bitmap;
+        FIBITMAP *copy;
+        VALUE result = Qnil;
+        GET_BITMAP(bitmap);
+
+        if (copy = FreeImage_ConvertTo32Bits(bitmap)) {
+          copy_icc_profile(self, bitmap, copy);
+          result = wrap(copy, self, 0);
+        }
+        return result;
+     }
+    END
+
+    builder.c <<-"END"
+      VALUE paste(VALUE src, int l, int t, int a) {
+        FIBITMAP *bitmap;
+        FIBITMAP *src_bitmap;
+        GET_BITMAP(bitmap);
+        Data_Get_Struct(src, FIBITMAP, src_bitmap);
+
+        if (FreeImage_Paste(bitmap, src_bitmap, l, t, a))
+        {
+         return Qtrue;
+        }
+        else
+        {
+          return Qfalse;
+        }
+      }
+    END
+
+    builder.c <<-"END"
+      VALUE composite(VALUE use_file_background, VALUE background_color, VALUE background_image) {
+        FIBITMAP *bitmap;
+        VALUE result = Qnil;
+        BOOL useFileBackground;
+        RGBQUAD  *backgroundColor = NULL;
+        FIBITMAP *backgroundImage = NULL;
+        FIBITMAP *compositeImage = NULL;
+        GET_BITMAP(bitmap);
+
+        useFileBackground = (use_file_background == Qtrue) ? TRUE: FALSE;
+
+        if (background_color != Qnil)
+          Data_Get_Struct(background_color, RGBQUAD, backgroundColor);
+
+        if (background_image != Qnil)
+          Data_Get_Struct(background_image, FIBITMAP, backgroundImage);
+
+        if (compositeImage = FreeImage_Composite(bitmap, useFileBackground, backgroundColor, backgroundImage)) {
+          copy_icc_profile(self, bitmap, compositeImage);
+          result = wrap(compositeImage, self, 0);
+        }
+        return result;
       }
     END
   end
